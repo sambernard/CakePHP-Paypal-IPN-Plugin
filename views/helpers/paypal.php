@@ -6,7 +6,7 @@
   * @license MIT
   */
 class PaypalHelper extends AppHelper {
-  
+
   var $helpers = array('Html','Form');
 
   /**
@@ -15,16 +15,16 @@ class PaypalHelper extends AppHelper {
   function __construct(){
     App::import(array('type' => 'File', 'name' => 'PaypalIpn.PaypalIpnConfig', 'file' => 'config'.DS.'paypal_ipn_config.php'));
     $this->config =& new PaypalIpnConfig();
-    parent::__construct();  
+    parent::__construct();
   }
-  
+
   /**
     *  function button will create a complete form button to Pay Now, Donate, Add to Cart, or Subscribe using the paypal service.
     *  Configuration for the button is in /config/paypal_ip_config.php
-    *  
+    *
     *  for this to work the option 'item_name' and 'amount' must be set in the array options or default config options.
     *
-    *  Example: 
+    *  Example:
     *     $paypal->button('Pay Now', array('amount' => '12.00', 'item_name' => 'test item'));
     *     $paypal->button('Subscribe', array('type' => 'subscribe', 'amount' => '60.00', 'term' => 'month', 'period' => '2'));
     *     $paypal->button('Donate', array('type' => 'donate', 'amount' => '60.00'));
@@ -44,13 +44,13 @@ class PaypalHelper extends AppHelper {
     * @access public
     * @param String $title takes the title of the paypal button (default "Pay Now" or "Subscribe" depending on option['type'])
     * @param Array $options takes an options array defaults to (configuration in /config/paypal_ipn_config.php)
-    * 
-    *   helper_options:  
+    *
+    *   helper_options:
     *      test: true|false switches default settings in /config/paypal_ipn_config.php between settings and testSettings
     *      type: 'paynow', 'addtocart', 'donate', 'unsubscribe', 'cart', or 'subscribe' (default 'paynow')
-    *    
+    *
     *    You may pass in api name value pairs to be passed directly to the paypal form link.  Refer to paypal.com for a complete list.
-    *    some paypal API examples: 
+    *    some paypal API examples:
     *      amount: float value
     *      notify_url: string url
     *      item_name: string name of product.
@@ -60,11 +60,11 @@ class PaypalHelper extends AppHelper {
     if(is_array($title)){
       $options = $title;
       $title = isset($options['label']) ? $options['label'] : null;
-    }    
-    $defaults = (isset($options['test']) && $options['test']) ? $this->config->testSettings : $this->config->settings; 
+    }
+    $defaults = (isset($options['test']) && $options['test']) ? $this->config->testSettings : $this->config->settings;
     $options = array_merge($defaults, $options);
     $options['type'] = (isset($options['type'])) ? $options['type'] : "paynow";
-    
+
     switch($options['type']){
       case 'subscribe': //Subscribe
         $options['cmd'] = '_xclick-subscriptions';
@@ -100,18 +100,30 @@ class PaypalHelper extends AppHelper {
         $default_title = 'Pay Now';
         break;
     }
-    
+
     $title = (empty($title)) ? $default_title : $title;
     $retval = "<form action='{$options['server']}/cgi-bin/webscr' method='post'><div>";
     unset($options['server']);
-    foreach($options as $name => $value){
-       $retval .= $this->__hiddenNameValue($name, $value);
+
+    $encryptedFields = false;
+    if($this->config->encryption['encrypt']){
+      $encryptedFields = $this->__encryptFields($options);
     }
+
+    if($encryptedFields == false){
+      foreach($options as $name => $value){
+         $retval .= $this->__hiddenNameValue($name, $value);
+      }
+    } else {
+        $retval .= $encryptedFields;
+    }
+
+
     $retval .= $this->__submitButton($title);
-    
+
     return $retval;
   }
-  
+
   /**
    *  __hiddenNameValue constructs the name value pair in a hidden input html tag
    * @access private
@@ -123,7 +135,58 @@ class PaypalHelper extends AppHelper {
   function __hiddenNameValue($name, $value){
     return "<input type='hidden' name='$name' value='$value' />";
   }
-  
+
+  /**
+   *  __encryptFields constructs the name value pair in a hidden input html tag
+   * @access private
+   * @param Array hold key/value options of paypal button.
+   * @access private
+   * @return Html form button and close form
+   */
+  function __encryptFields($options){
+
+    if (!file_exists($this->config->encryption['key_file'])) {
+            $this->log("ERROR: MY_KEY_FILE {$this->config->encryption['key_file']} not found\n");
+            return false;
+    }
+    if (!file_exists($this->config->encryption['cert_file'])) {
+            $this->log("ERROR: MY_CERT_FILE {$this->config->encryption['cert_file']} not found\n");
+            return false;
+    }
+    if (!file_exists($this->config->encryption['paypal_cert_file'])) {
+            $this->log("ERROR: PAYPAL_CERT_FILE {$this->config->encryption['paypal_cert_file']} not found\n");
+            return false;
+    }
+
+    $options['cert_id'] = $this->config->encryption['cert_id'];
+
+    //Assign Build Notation for PayPal Support
+    $options['bn']= 'webtechnick_cakephp_paypal-ipn-plugin';
+
+    $data = "";
+    foreach ($options as $key => $value) {
+            if ($value != "") {
+                    $data .= "$key=$value\n";
+            }
+    }
+
+    $openssl_cmd = "({$this->config->encryption['openssl']} smime -sign -signer {$this->config->encryption['cert_file']} -inkey {$this->config->encryption['key_file']} " .
+                                            "-outform der -nodetach -binary <<_EOF_\n$data\n_EOF_\n) | " .
+                                            "{$this->config->encryption['openssl']} smime -encrypt -des3 -binary -outform pem {$this->config->encryption['paypal_cert_file']}";
+
+    exec($openssl_cmd, $output, $error);
+
+    if (!$error) {
+            $encryptedFields = implode("\n",$output);
+            return
+            '<input type="hidden" name="cmd" value="_s-xclick">' .
+            "<input type='hidden' name='encrypted' value='$encryptedFields' />";
+
+    } else {
+            return false;
+    }
+  }
+
   /**
    *  __submitButton constructs the submit button from the provided text
    * @param String text | text is the label of the submit button.  Can use plain text or image url.
@@ -133,16 +196,16 @@ class PaypalHelper extends AppHelper {
   function __submitButton($text){
     return "</div>" . $this->Form->end(array('label' => $text));
   }
-  
+
   /**
-    * __subscriptionOptions conversts human readable subscription terms 
+    * __subscriptionOptions conversts human readable subscription terms
     * into paypal terms if need be
     *  @access private
     *  @param array options | human readable options into paypal API options
     *     INT period //paypal api period of term, 2, 3, 1
     *     String term //paypal API term //month, year, day, week
     *     Float amount //paypal API amount to charge for perioud of term.
-    *  @return array options 
+    *  @return array options
     */
   function __subscriptionOptions($options = array()){
     //Period... every 1, 2, 3, etc.. Term
@@ -166,10 +229,10 @@ class PaypalHelper extends AppHelper {
       }
       unset($options['term']);
     }
-    
+
     return $options;
   }
-  
+
   /**
     * __uploadCartOptions converts an array of items into paypal friendly name/value pairs
     * @access private

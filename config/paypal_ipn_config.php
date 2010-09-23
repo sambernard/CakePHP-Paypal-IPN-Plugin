@@ -2,14 +2,14 @@
 /************
   * Use these settings to set defaults for the Paypal Helper class.
   * The PaypalHelper class will help you create paynow, subscribe, donate, or addtocart buttons for you.
-  * 
+  *
   * All these options can be set on the fly as well within the helper
   */
-  
+
 class PaypalIpnConfig {
 
   /************
-    * Each settings key coresponds to the Paypal API.  Review www.paypal.com for more. 
+    * Each settings key coresponds to the Paypal API.  Review www.paypal.com for more.
     */
   var $settings = array(
     'business' => 'live_email@paypal.com', //'live_email@paypal.com', //Your Paypal email account
@@ -20,7 +20,7 @@ class PaypalIpnConfig {
     'item_name' => 'Paypal_IPN', //Default item name.
     'amount' => '15.00' //Default item amount.
   );
-  
+
   /***********
     * Test settings to test with using a sandbox paypal account.
     */
@@ -34,5 +34,16 @@ class PaypalIpnConfig {
     'amount' => '15.00'
   );
 
+  /***********
+    * Settings for encrypted buttons
+    */
+  var $encryption = array(
+    'encrypt' => false, /* Set to true to enable encryption */
+    'cert_id' => '', /*Certificate ID (gotten after certificate uploaded to paypal)*/
+    'key_file' => '', /*Absolute path to Private Key File*/
+    'cert_file' => '', /*Absolute path to Public Certificate file*/
+    'paypal_cert_file' => '', /*Absolute path to Paypal certificate file*/
+    'openssl' => '/usr/bin/openssl' /*OpenSSL location */
+  );
 }
 ?>
